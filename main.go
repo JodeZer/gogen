@@ -16,6 +16,9 @@ import (
 	"os"
 	"io"
 	"bufio"
+	"crypto/sha256"
+	"net/http"
+	"io/ioutil"
 )
 
 type H5PayRequest struct {
@@ -32,124 +35,117 @@ type H5PayRequest struct {
 	Terminalid string `json:"terminalid" url:"terminalid"`                   //终端号
 	Version    string `json:"version" url:"version"`                         //版本号
 }
+
 var Domain string
-const signKey ="zsdfyreuoyamdphhaweyrjbvzkgfdycs"
-func main(){
-	filepath :=flag.String("f","example.conf","gen url by conf")
+
+func main() {
+	filepath := flag.String("f", "example.conf", "gen url by conf")
 	flag.Parse()
 
-	h5 :=encapConfigData(*filepath)
-	genUrl(h5)
+	req := encapRequestData(*filepath)
+	respBytes :=postScanpayReq(req)
+	marshalRespBytes(respBytes,req.Chcd)
 
 }
-func encapConfigData(path string) (h5 *H5PayRequest){
-	node:="h5"
-	c :=Config{}
+func encapConfigData(path string) (h5 *H5PayRequest) {
+	node := "h5"
+	c := Config{}
 	c.InitConfig(path)
 	//for k,v:=range c.Mymap{
 	//	fmt.Printf("k:%s v:%s\n",k,v)
 	//}
-	h5 =&H5PayRequest{}
+	h5 = &H5PayRequest{}
 	h5.OrderNum = strconv.Itoa(int(time.Now().UnixNano()))
-	h5.Attach = c.Read(node,"attach")
-	h5.BackUrl = c.Read(node,"backUrl")
-	h5.Busicd = c.Read(node,"busicd")
-	h5.Chcd = c.Read(node,"chcd")
-	h5.FrontUrl = c.Read(node,"frontUrl")
-	h5.GoodsInfo = c.Read(node,"goodsInfo")
-	h5.Mchntid = c.Read(node,"mchntid")
-	h5.Txamt = c.Read(node,"txamt")
-	h5.Terminalid = c.Read(node,"terminalid")
-	h5.Version = c.Read(node,"version")
-	theSignKey := c.Read(node,"signKey")
-	Domain = c.Read(node,"domain")
-	h5.Sign = signWithSha1(h5,theSignKey)
+	h5.Attach = c.Read(node, "attach")
+	h5.BackUrl = c.Read(node, "backUrl")
+	h5.Busicd = c.Read(node, "busicd")
+	h5.Chcd = c.Read(node, "chcd")
+	h5.FrontUrl = c.Read(node, "frontUrl")
+	h5.GoodsInfo = c.Read(node, "goodsInfo")
+	h5.Mchntid = c.Read(node, "mchntid")
+	h5.Txamt = c.Read(node, "txamt")
+	h5.Terminalid = c.Read(node, "terminalid")
+	h5.Version = c.Read(node, "version")
+	theSignKey := c.Read(node, "signKey")
+	Domain = c.Read(node, "domain")
+	h5.Sign = signWithSha1(h5, theSignKey)
 	return
 
 }
-func genUrl(h5 *H5PayRequest){
-	bytes,_:=json.Marshal(h5)
-	fmt.Printf("json: ==>%s\n",bytes)
+func genUrl(h5 *H5PayRequest) {
+	bytes, _ := json.Marshal(h5)
+	fmt.Printf("json: ==>%s\n", bytes)
 	b64str := base64.StdEncoding.EncodeToString(bytes)
-	url :=Domain + "?data=" +b64str
-	fmt.Println(url+"\n")
+	url := Domain + "?data=" + b64str
+	fmt.Println(url + "\n")
 }
-func signWithSha1(s interface{},signKey string)string{
-	signBuffer,_ := Query(s)
-	signString:=signBuffer.String() + signKey
-	fmt.Printf("sign string==> %s\n",signString)
+func signWithSha1(s interface{}, signKey string) string {
+	signBuffer, _ := Query(s)
+	signString := signBuffer.String() + signKey
+	fmt.Printf("sign string==> %s\n", signString)
 	//h:=sha1.New()
 	//h.Write([]byte(signString))
 	//signBytes:=h.Sum(nil)
-	signBytes :=sha1.Sum([]byte(signString))
+	signBytes := sha1.Sum([]byte(signString))
 	//fmt.Printf("sign\n  %v\n\n",signBytes)
-	signString =fmt.Sprintf("%x",signBytes)
+	signString = fmt.Sprintf("%x", signBytes)
 	return signString
 }
-func main1() {
-	chcd :=flag.String("c","WXP","channel code")
-	env :=flag.String("e","test","local | test | product address")
 
-	merid :=flag.String("m","000000000000012","merchant id")
-	flag.Parse()
-	cmd :=flag.Arg(0)
-	fmt.Printf("%s %s %s %s\n",*chcd,*merid,*env,cmd)
-
-
-
-	reqData :=&H5PayRequest{
-		Busicd:"WPAY",
-		BackUrl:"http://www.baidu.com",
-		Chcd:*chcd,
-		FrontUrl:"http://www.baidu.com",
-		//Mchntid:"999118888881312",
-		//Mchntid:"100000000010001",
-		Mchntid:*merid,
-		OrderNum:strconv.Itoa(int(time.Now().UnixNano())),
-		Txamt:"000000000001",
-//		Txdir:"Q",
-		Terminalid:"00000001",
-		Version:"1.0",
-
+func encapRequestData(path string) (req *ScanPayRequest) {
+	node := "scanpay"
+	c := Config{}
+	c.InitConfig(path)
+	for k,v:=range c.Mymap{
+		fmt.Printf("k:%s v:%s\n",k,v)
 	}
+	req = &ScanPayRequest{}
+	req.OrderNum = strconv.Itoa(int(time.Now().UnixNano()))
+	req.Txndir = c.Read(node, "txndir")
+	req.Busicd = c.Read(node,"busicd")
+	req.AgentCode = c.Read(node,"inscd")
+	req.Chcd =c.Read(node,"chcd")
+	req.GoodsList = `[{"goodsId":"iphone6s_16G","unifiedGoodsId":"1001", "goodsName":"iPhone6s 16G","goodsNum":"1","price":"528800","goodsCategory":"123456","body":"苹果手机"},{"goodsId":"iphone6s_16G","unifiedGoodsId":"1001", "goodsName":"iPhone6s 16G","goodsNum":"1","price":"528800","goodsCategory":"123456","body":"苹果手机","showUrl":"www.lalala.com"}]`
+	req.Mchntid = c.Read(node,"mchntid")
+	req.Txamt = c.Read(node,"txamt")
+	req.Terminalid = c.Read(node,"terminalid")
+	req.Currency = c.Read(node,"currency")
+	req.Version = c.Read(node,"version")
+	req.OutOrderNum = c.Read(node,"outOrderNum")
+	theSignKey := c.Read(node, "signKey")
+	Domain = c.Read(node, "domain")
 
-
-	reqData.Sign =signWithSha1(reqData,signKey)
-
-
-
-
-
-	bytes,_:=json.Marshal(reqData)
-	fmt.Printf("json: ==>%s\n",bytes)
-	b64str := base64.StdEncoding.EncodeToString(bytes)
-	var url string
-	//fmt.Printf("encode ==>%s\n",b64str)
-	switch *env {
-	case "test":
-		url="http://test.quick.ipay.so/scanpay/unified?data=" + b64str
-	case "product":
-		url="http://showmoney.cn/scanpay/unified?data=" + b64str
-	case "local":
-		url="http://10.30.1.195:6800/scanpay/unified?data=" + b64str
-
-	}
-	//url:="http://showmoney.cn/scanpay/unified?data=" + b64str
-	//url:="http://10.30.1.195:6800/scanpay/unified?data=" + b64str
-	//fmt.Sprintf(url,b64str)
-	fmt.Println(url+"\n")
-	//req,_:=http.NewRequest("GET",url,nil)
-	//client:=&http.Client{}
-	//response, _:=client.Do(req)
-	//defer response.Body.Close()
-	//rspByte,_:=ioutil.ReadAll(response.Body)
-	//fmt.Printf("response string  %s",string(rspByte))
-	//http://test.quick.ipay.so/scanpay/unified?data=eyJidXNpY2QiOiJXUEFZIiwiYmFja1VybCI6Imh0dHA6Ly93d3cuYmFpZHUuY29tIiwiY2hjZCI6IldYUCIsImZyb250VXJsIjoiaHR0cDovL3d3dy5iYWlkdS5jb20iLCJtY2hudGlkIjoiMDAwMDAwMDAwMDAwMDEyIiwib3JkZXJOdW0iOiIxNDczODM0NDUxNjUwNTg5MDAwIiwidHhhbXQiOiIwMDAwMDAwMDAwMDEiLCJ0eGRpciI6IlEiLCJzaWduIjoiYmE2Yzg2NmI4ODA3MGM2ZTg1MTMyOTY1MWFjMzAwN2M4Mjk2MWI0MCIsInRlcm1pbmFsaWQiOiIwMDAwMDAwMSIsInZlcnNpb24iOiIxLjAifQ==
-	//fmt.Println(signWithSha1(url,""))
-
+	req.Sign = signWithSha256(req, theSignKey)
+	return
 }
 
+func marshalRespBytes(bytes []byte,chanCode string){
 
+}
+func postScanpayReq(req *ScanPayRequest) []byte{
+	reqBytes,_:=json.Marshal(req)
+	body := bytes.NewBuffer([]byte(reqBytes))
+	res,err := http.Post(Domain, "application/json;charset=utf-8", body)
+	if err!=nil{
+		fmt.Print("post err %s",err)
+	}
+	defer res.Body.Close()
+	result, _ := ioutil.ReadAll(res.Body)
+	return result
+
+}
+func signWithSha256(req *ScanPayRequest, key string) string {
+	signBuffer, _ := Query(req)
+	signString := signBuffer.String() + key
+	fmt.Printf("sign string==> %s\n", signString)
+	//h:=sha1.New()
+	//h.Write([]byte(signString))
+	//signBytes:=h.Sum(nil)
+	signBytes := sha256.Sum256([]byte(signString))
+	//fmt.Printf("sign\n  %v\n\n",signBytes)
+	signString = fmt.Sprintf("%x", signBytes)
+	return signString
+}
 func Query(s interface{}, excludes ...string) (buf bytes.Buffer, err error) {
 	if s == nil {
 		return
@@ -204,12 +200,9 @@ func StringInSlice(a string, list []string) bool {
 	return false
 }
 
-
-
 var timeType = reflect.TypeOf(time.Time{})
 
 var encoderType = reflect.TypeOf(new(Encoder)).Elem()
-
 
 type Encoder interface {
 	EncodeValues(key string, v *url.Values) error
@@ -243,7 +236,8 @@ func reflectValue(values url.Values, val reflect.Value, scope string) error {
 	typ := val.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		sf := typ.Field(i)
-		if sf.PkgPath != "" && !sf.Anonymous { // unexported
+		if sf.PkgPath != "" && !sf.Anonymous {
+			// unexported
 			continue
 		}
 
@@ -455,8 +449,8 @@ func (c *Config) InitConfig(path string) {
 
 		n1 := strings.Index(s, "[")
 		n2 := strings.LastIndex(s, "]")
-		if n1 > -1 && n2 > -1 && n2 > n1+1 {
-			c.strcet = strings.TrimSpace(s[n1+1 : n2])
+		if n1 > -1 && n2 > -1 && n2 > n1 + 1 {
+			c.strcet = strings.TrimSpace(s[n1 + 1 : n2])
 			continue
 		}
 
@@ -472,7 +466,7 @@ func (c *Config) InitConfig(path string) {
 		if len(frist) == 0 {
 			continue
 		}
-		second := strings.TrimSpace(s[index+1:])
+		second := strings.TrimSpace(s[index + 1:])
 
 		pos := strings.Index(second, "\t#")
 		if pos > -1 {
@@ -510,4 +504,98 @@ func (c Config) Read(node, key string) string {
 		return ""
 	}
 	return v
+}
+
+// ScanPayRequest 扫码支付
+type ScanPayRequest struct {
+	Txndir             string `json:"txndir,omitempty" url:"txndir,omitempty" bson:"txndir,omitempty"`                         // 交易方向
+	Busicd             string `json:"busicd,omitempty" url:"busicd,omitempty" bson:"busicd,omitempty"`                         // 交易类型
+	AgentCode          string `json:"inscd,omitempty" url:"inscd,omitempty" bson:"inscd,omitempty"`                            // 代理/机构号
+	Chcd               string `json:"chcd,omitempty" url:"chcd,omitempty" bson:"chcd,omitempty"`                               // 渠道机构
+	Mchntid            string `json:"mchntid,omitempty" url:"mchntid,omitempty" bson:"mchntid,omitempty"`                      // 商户号
+	Terminalid         string `json:"terminalid,omitempty" url:"terminalid,omitempty" bson:"terminalid,omitempty"`             // 终端号
+	Txamt              string `json:"txamt,omitempty" url:"txamt,omitempty" bson:"txamt,omitempty"`                            // 订单金额
+	Currency           string `json:"currency,omitempty" url:"currency,omitempty" bson:"currency,omitempty"`                   // 币种
+	GoodsInfo          string `json:"goodsInfo,omitempty" url:"goodsInfo,omitempty" bson:"goodsInfo,omitempty"`                // 商品详情
+	OrderNum           string `json:"orderNum,omitempty" url:"orderNum,omitempty" bson:"orderNum,omitempty"`                   // 订单号
+	OrigOrderNum       string `json:"origOrderNum,omitempty" url:"origOrderNum,omitempty" bson:"origOrderNum,omitempty"`       // 原订单号
+	ScanCodeId         string `json:"scanCodeId,omitempty" url:"scanCodeId,omitempty" bson:"scanCodeId,omitempty"`             // 扫码号
+	Sign               string `json:"sign,omitempty" url:"-" bson:"sign,omitempty" `                                           // 签名
+	NotifyUrl          string `json:"backUrl,omitempty" url:"backUrl,omitempty" bson:"backUrl,omitempty"`                      // 异步通知地址
+	OpenId             string `json:"openid,omitempty" url:"openid,omitempty" bson:"openid,omitempty"`                         // openid
+	CheckName          string `json:"checkName,omitempty" url:"checkName,omitempty" bson:"checkName,omitempty"`                // 校验用户姓名选项
+	UserName           string `json:"userName,omitempty" url:"userName,omitempty" bson:"userName,omitempty"`                   // 用户名
+	Desc               string `json:"desc,omitempty" url:"desc,omitempty" bson:"desc,omitempty"`                               // 描述
+	Code               string `json:"code,omitempty" url:"code,omitempty" bson:"code,omitempty"`                               // 认证码
+	NeedUserInfo       string `json:"needUserInfo,omitempty" url:"needUserInfo,omitempty" bson:"needUserInfo,omitempty"`       // 是否需要获取用户信息
+	VeriCode           string `json:"veriCode,omitempty" url:"veriCode,omitempty" bson:"veriCode,omitempty"`                   // js支付用到的凭证
+	Attach             string `json:"attach,omitempty" url:"attach,omitempty" bson:"attach,omitempty"`
+	TimeExpire         string `json:"timeExpire,omitempty" url:"timeExpire,omitempty" bson:"timeExpire,omitempty"`             // 过期时间
+	Version            string `json:"version,omitempty" url:"version,omitempty" bson:"version,omitempty"`                      // 报文版本号
+
+	TradeFrom          string `json:"tradeFrom,omitempty" url:"tradeFrom,omitempty" bson:"tradeFrom,omitempty"`                // 交易来源
+	SettDate           string `json:"settDate,omitempty" url:"settDate,omitempty" bson:"settDate,omitempty"`
+	NextOrderNum       string `json:"nextOrderNum,omitempty" url:"nextOrderNum,omitempty" bson:"nextOrderNum,omitempty"`
+
+	DiscountAmt        string `json:"discountAmt,omitempty" url:"discountAmt,omitempty" bson:"discountAmt,omitempty"`          //优惠金额 C 卡券优惠金额，在支付账单中作显示
+	IntDiscountAmt     int64  `json:"-" url:"-" bson:"-"`                                                                      //以分为单位优惠金额 辅助字段
+
+																															   // 卡券相关字段
+	VeriTime           string `json:"veriTime,omitempty" url:"veriTime,omitempty" bson:"veriTime,omitempty"`                   // 核销次数 C
+	Terminalsn         string `json:"terminalsn,omitempty" url:"terminalsn,omitempty" bson:"terminalsn,omitempty"`             // 终端号
+	Cardbin            string `json:"cardbin,omitempty" url:"cardbin,omitempty" bson:"cardbin,omitempty"`                      // 银行卡cardbin或者用户标识等 C
+	PayType            string `json:"payType,omitempty" url:"payType,omitempty" bson:"payType,omitempty"`                      // 支付方式 c
+	CouponOrderNum     string `json:"couponOrderNum,omitempty" url:"couponOrderNum,omitempty" bson:"couponOrderNum,omitempty"` // 辅助字段 卡券的系统订单号
+	OrigChanOrderNum   string `json:"-" url:"-" bson:"-"`                                                                      // 辅助字段 原渠道订单号
+	OrigSubmitTime     string `json:"-" url:"-" bson:"-"`                                                                      // 辅助字段原交易提交时间
+	OrigVeriTime       int    `json:"-" url:"-" bson:"-"`                                                                      // 辅助字段 原交易验证时间
+	IntPayType         int    `json:"-" url:"-" bson:"-"`                                                                      // 辅助字段 核销次数
+	IntVeriTime        int    `json:"-" url:"-" bson:"-"`
+	OrigCardbin        string `json:"-" url:"-" bson:"-"`                                                                      //辅助字段
+	OrigScanCodeId     string `json:"-" url:"-" bson:"-"`                                                                      //辅助字段
+	CreateTime         string `json:"-" url:"-" bson:"-"`                                                                      // 卡券交易创建时间
+
+																															   //渠道相关字段
+	ChnlOrigTxnTime    string `json:"-" url:"-" bson:"-"`                                                                      // 渠道原交易时间
+	ChnlOrigOrderNum   string `json:"-" url:"-" bson:"-"`                                                                      // 渠道原交易订单号
+
+																															   // 微信需要的字段
+	AppID              string `json:"-" url:"-" bson:"-"`                                                                      // 公众号ID
+	SubAppID           string `json:"-" url:"-" bson:"-"`                                                                      // 公众号子ID
+	DeviceInfo         string `json:"-" url:"-" bson:"-"`                                                                      // 设备号
+	SubMchId           string `json:"-" url:"-" bson:"-"`                                                                      // 子商户
+	TotalTxamt         string `json:"-" url:"-" bson:"-"`                                                                      // 订单总金额
+	GoodsTag           string `json:"-" url:"-" bson:"-"`                                                                      // 商品标识
+	SubOpenID          string `json:"-" url:"-" bson:"-"`                                                                      // 子openid
+
+																															   // 辅助字段
+	Subject            string `json:"-" url:"-" bson:"-"`                                                                      // 商品名称
+	SysOrderNum        string `json:"-" url:"-" bson:"-"`                                                                      // 渠道交易号
+	ActTxamt           string `json:"-" url:"-" bson:"-"`                                                                      // 实际交易金额 不同渠道单位不同
+	IntTxamt           int64  `json:"-" url:"-" bson:"-"`                                                                      // 以分为单位的交易金额
+	ChanMerId          string `json:"-" url:"-" bson:"-"`                                                                      // 渠道商户Id
+	SignKey            string `json:"-" url:"-" bson:"-"`                                                                      // 可能表示md5key等
+	ExtendParams       string `json:"-" url:"-" bson:"-"`                                                                      // 业务扩展参数
+	PemCert            []byte `json:"-" url:"-" bson:"-"`                                                                      // 商户双向认证证书，如果是大商户模式，用大商户的证书
+	PemKey             []byte `json:"-" url:"-" bson:"-"`                                                                      // 商户双向认证密钥，如果是大商户模式，用大商户的密钥
+	ReqId              string `json:"-" url:"-" bson:"-"`
+	AppAuthToken       string `json:"-" url:"-" bson:"-"`
+	SubMerId           string `json:"-" url:"-" bson:"-"`                                                                      // 子商户号,支付宝银行模式需要使用
+	TransMode          int    `json:"-" url:"-" bson:"-"`                                                                      // 交易模式，1-ALP1.0 2-ALP2.0withRSA 3-ALP2.0withAUTH 4-ALPbankmode
+
+																															   // 访问方式
+	IsGBK              bool     `json:"-" url:"-" bson:"-"`
+																															   //M       Merchant `json:"-" url:"-" bson:"-"`
+																															   //ChanMer ChanMer  `json:"-" url:"-" bson:"-"` //渠道商户配置
+																															   /*TODO 此成员加入后，使用(*model.Trans)类型，取值对其整体赋值，validate处反射出错。原因不明*/
+																															   //OrigTrans Trans  `json:"-" url:"-" bson:"-"`//原交易信息
+	OrigTransBusicd    string `json:"-" url:"-" bson:"-"`                                                                      //原交易类型   代替OrigTrans，临时使用实现功能
+
+	LimitPay           string `json:"-" url:"-" bson:"-"`                                                                      // 指定支付方式
+
+	NeedAddSpTransColl bool `json:"-" url:"-" bson:"-"`                                                                        // 交易是否需要记入trans.sp表，目前只有取消交易用到这个字段
+
+																															   //Version 2.0
+	GoodsList          string        `json:"goodsList,omitempty" bson:"goodsList,omitempty" url:"goodsList,omitempty"`
+	OutOrderNum        string        `json:"outOrderNum,omitempty" bson:"outOrderNum,omitempty" url:"outOrderNum,omitempty"`
 }
